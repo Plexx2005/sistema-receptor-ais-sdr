@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Receptor AIS</title>
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<link rel="stylesheet" href="/gui/comun.css">
+<style>
+:root {
+  --fondo: #f5f6f8; --panel: #ffffff; --borde: #d9dde3; --texto: #1c2430; --suave: #5b6675;
+  --acento: #1565c0; --ok: #1b8a4b; --alerta: #c62828; --fila: #eef4fb; --barra: #c9d9ee;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #12171e; --panel: #1b222c; --borde: #2c3644; --texto: #e6eaf0; --suave: #9aa6b6;
+    --acento: #5aa2f0; --ok: #46c27a; --alerta: #ef6b6b; --fila: #223045; --barra: #2d4a70;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fondo); color: var(--texto); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--borde); }
+h1 { font-size: 18px; margin: 0; }
+.estado { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.punto { width: 10px; height: 10px; border-radius: 50%; background: var(--alerta); }
+.punto.on { background: var(--ok); }
+.metricas { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-left: auto; }
+.metrica { display: flex; flex-direction: column; min-width: 70px; }
+.metrica span { font-size: 11px; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+.metrica b { font-size: 17px; font-variant-numeric: tabular-nums; }
+#mNube.ok { color: var(--ok); }
+#mNube.pend { color: #b26a00; }
+#mNube.mal { color: var(--alerta); }
+main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 16px; padding: 16px 20px; }
+.columna { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } }
+section { background: var(--panel); border: 1px solid var(--borde); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+h2 { font-size: 14px; margin: 0 0 10px; display: flex; justify-content: space-between; }
+h2 small { color: var(--suave); font-weight: 400; }
+h3 { font-size: 12px; margin: 0 0 8px; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+.tabla { overflow: auto; max-height: 62vh; }
+.tabla thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--borde); white-space: nowrap; }
+th { font-size: 11px; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+td.num, th.num { text-align: right; }
+tr.nuevo td { background: var(--fila); }
+.vacio { color: var(--suave); padding: 16px 4px; }
+#registro { max-height: 52vh; overflow-y: auto; }
+.msg { border-bottom: 1px solid var(--borde); padding: 7px 2px; }
+.msg.nuevo { background: var(--fila); }
+.msg .cab { display: flex; flex-wrap: wrap; gap: 4px 12px; font-weight: 600; }
+.msg .cab em { font-style: normal; color: var(--suave); font-weight: 400; }
+.msg .det { color: var(--suave); }
+.msg code { display: block; font: 12px/1.35 ui-monospace, Consolas, monospace; word-break: break-all; color: var(--acento); }
+.canal { display: inline-block; min-width: 18px; text-align: center; border-radius: 4px; padding: 0 5px; font-weight: 700; border: 1px solid var(--borde); }
+.aviso { padding: 8px 20px; background: var(--alerta); color: #fff; display: none; }
+.aviso.ambar { background: #b26a00; }
+.controles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; }
+.campo { display: flex; flex-direction: column; gap: 3px; }
+.campo label { font-size: 11px; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+input, select { font: inherit; color: var(--texto); background: var(--fondo); border: 1px solid var(--borde); border-radius: 6px; padding: 5px 8px; width: 110px; }
+input:disabled, select:disabled { opacity: .5; }
+button { font: inherit; font-weight: 600; border-radius: 6px; border: 1px solid var(--borde); padding: 6px 14px; cursor: pointer; background: var(--panel); color: var(--texto); }
+button.principal { background: var(--acento); border-color: var(--acento); color: #fff; }
+button:disabled { opacity: .45; cursor: default; }
+.botones { display: flex; gap: 8px; margin-left: auto; }
+#avisoCtl { margin-top: 8px; color: var(--suave); min-height: 20px; }
+.rejilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tarjeta { border: 1px solid var(--borde); border-radius: 8px; padding: 10px 12px; }
+.tarjeta b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.tarjeta span { display: block; font-size: 11px; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+.tres { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 14px; }
+.fila-barra { display: grid; grid-template-columns: 1fr 44px; gap: 8px; align-items: center; margin-bottom: 6px; }
+.fila-barra .nombre { grid-column: 1 / 3; font-size: 13px; }
+.barra { height: 10px; background: var(--fondo); border-radius: 5px; overflow: hidden; border: 1px solid var(--borde); }
+.barra i { display: block; height: 100%; background: var(--acento); }
+.fila-barra .valor { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.vista { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.vista button { padding: 4px 12px; font-weight: 500; }
+.vista button.activo { background: var(--acento); border-color: var(--acento); color: #fff; }
+#espCanvas { width: 100%; height: 230px; display: block; }
+.ejes { padding-left: 46px; padding-right: 10px; margin-top: 4px; }
+.wf { width: 100%; height: 180px; display: none; image-rendering: pixelated; border: 1px solid var(--borde); background: #000; }
+.wf.visible { display: block; }
+.opciones { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.opciones button { padding: 4px 12px; font-weight: 500; }
+.opciones select { width: auto; padding: 4px 8px; }
+.opciones span { color: var(--suave); }
+.mapa-caja { position: relative; height: 460px; border: 1px solid var(--borde); border-radius: 6px; overflow: hidden; }
+#mapaL { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+tr.clic { cursor: pointer; }
+tr.clic:hover td { background: var(--fila); }
+#panelBorrar .campo input { width: 190px; }
+#panelBorrar .campo input.ancho { width: 220px; }
+#resBorrar { margin-top: 8px; min-height: 20px; color: var(--suave); }
+#resBorrar.error { color: var(--alerta); }
+button.peligro { background: var(--alerta); border-color: var(--alerta); color: #fff; }
+</style>
+</head>
+<body>
+<div class="aviso" id="aviso"></div>
+<div class="aviso ambar" id="avisoAmbar"></div>
+<header>
+  <h1>Receptor AIS</h1>
+  <div class="estado"><span class="punto" id="punto"></span><span id="textoEstado">Conectando…</span></div>
+  <div class="metricas">
+    <div class="metrica"><span>Fuente</span><b id="mFuente">–</b></div>
+    <div class="metrica"><span>Sesión</span><b id="mSesion">–</b></div>
+    <div class="metrica"><span>Tiempo</span><b id="mTiempo">–</b></div>
+    <div class="metrica"><span>Mensajes</span><b id="mMensajes">0</b></div>
+    <div class="metrica"><span>Ráfagas</span><b id="mRafagas">0</b></div>
+    <div class="metrica"><span>Piso A / B (dB)</span><b id="mPiso">–</b></div>
+    <div class="metrica"><span>Perdidos</span><b id="mPerdidos">0</b></div>
+    <div class="metrica"><span>Nube</span><b id="mNube">–</b></div>
+  </div>
+</header>
+<main>
+  <div class="columna">
+    <section>
+      <h2>Controles <small id="notaFuente"></small></h2>
+      <div class="controles">
+        <div class="campo"><label for="cGanancia">Ganancia (dB)</label><select id="cGanancia"></select></div>
+        <div class="campo"><label for="cPpm">Corrección (ppm)</label><input id="cPpm" type="number" step="1" min="-200" max="200"></div>
+        <div class="campo"><label for="cUmbral">Umbral (dB)</label><input id="cUmbral" type="number" step="0.5" min="0.5" max="20"></div>
+        <button class="principal" id="bAplicar">Aplicar</button>
+        <div class="botones">
+          <button id="bIniciar">Iniciar</button>
+          <button id="bDetener">Detener</button>
+        </div>
+      </div>
+      <div id="avisoCtl">Cada cambio de ajustes abre una sesión nueva en la base de datos.</div>
+    </section>
+    <section>
+      <h2>Espectro y cascada <small id="notaEsp">sin datos</small></h2>
+      <div class="vista">
+        <button id="vZoom" class="activo">Canales AIS (±100 kHz)</button>
+        <button id="vFull">Banda completa (1,5 MHz)</button>
+        <button id="vPausa">Pausar</button>
+      </div>
+      <canvas id="espCanvas"></canvas>
+      <div class="ejes">
+        <canvas id="wfZoom" class="wf visible"></canvas>
+        <canvas id="wfFull" class="wf"></canvas>
+      </div>
+    </section>
+    <section>
+      <h2>Embarcaciones <small id="cuentaBarcos">0</small></h2>
+      <div id="filtros"></div>
+      <div class="tabla">
+        <table>
+          <thead>
+            <tr>
+              <th></th><th>MMSI</th><th>Nombre</th><th>País</th><th>Tipo</th><th class="num">Dist. (km)</th><th>Recepción</th>
+              <th class="num">Vel (kn)</th><th class="num">Rumbo</th><th class="num">Lat</th><th class="num">Lon</th><th>Destino</th><th class="num">Msgs</th><th class="num">Visto hace</th>
+            </tr>
+          </thead>
+          <tbody id="cuerpoBarcos"></tbody>
+        </table>
+        <div class="vacio" id="vacioBarcos">Esperando mensajes AIS…</div>
+      </div>
+    </section>
+    <section id="panelBorrar">
+      <h2>Eliminar registros <small>de la base de datos</small></h2>
+      <div class="controles">
+        <div class="campo"><label for="bBarco">Barco (nombre o MMSI)</label><input id="bBarco" class="ancho" type="text" maxlength="60" placeholder="p. ej. TEAM DREAM o 538004493"></div>
+        <div class="campo"><label for="bDesde">Desde (hora de recepción)</label><input id="bDesde" type="datetime-local"></div>
+        <div class="campo"><label for="bHasta">Hasta</label><input id="bHasta" type="datetime-local"></div>
+        <div class="botones">
+          <button id="bBuscarBorrar">Ver qué se borraría</button>
+          <button id="bEjecutarBorrar" class="peligro" disabled>Eliminar</button>
+        </div>
+      </div>
+      <div id="resBorrar">Usa uno o ambos criterios. Primero revisa cuántos registros coinciden y luego confirma.</div>
+    </section>
+    <section>
+      <h2>Métricas de la sesión</h2>
+      <div class="rejilla">
+        <div class="tarjeta"><span>Tasa de decodificación</span><b id="kTasa">–</b></div>
+        <div class="tarjeta"><span>SNR medio (dB)</span><b id="kSnrMedio">–</b></div>
+        <div class="tarjeta"><span>SNR último (dB)</span><b id="kSnrUltimo">–</b></div>
+        <div class="tarjeta"><span>Mensajes / min</span><b id="kMpm">–</b></div>
+        <div class="tarjeta"><span>Ráfagas sin CRC</span><b id="kSinCrc">0</b></div>
+        <div class="tarjeta"><span>Descartados</span><b id="kInvalidos">0</b></div>
+        <div class="tarjeta"><span>Guardados en BD</span><b id="kGuardados">0</b></div>
+        <div class="tarjeta"><span>Cola</span><b id="kCola">0</b></div>
+      </div>
+      <div class="tres">
+        <div><h3>Mensajes por canal</h3><div id="barrasCanal"></div></div>
+        <div><h3>Mensajes por tipo</h3><div id="barrasTipo"></div></div>
+      </div>
+    </section>
+  </div>
+  <div class="columna">
+    <section>
+      <h2>Mapa <small id="notaMapa"></small></h2>
+      <div class="opciones">
+        <button id="mAjustar">Ajustar a barcos</button>
+        <button id="mPestana" class="principal">Abrir mapa en pestaña</button>
+        <span>Estela:</span>
+        <select id="mEstela">
+          <option value="600">10 min</option>
+          <option value="3600" selected>1 h</option>
+          <option value="21600">6 h</option>
+          <option value="86400">24 h</option>
+        </select>
+      </div>
+      <div class="mapa-caja"><div id="mapaL"></div></div>
+      <div class="receptor-ctl">
+        <b>Mi ubicación:</b>
+        <button id="rxAuto">Usar mi ubicación</button>
+        <button id="rxClic">Fijar con clic en el mapa</button>
+        <input id="rxLat" type="number" step="0.00001" placeholder="Latitud">
+        <input id="rxLon" type="number" step="0.00001" placeholder="Longitud">
+        <button id="rxGuardar">Guardar</button>
+        <span class="estado-rx" id="rxEstado">Sin ubicación del receptor. Fíjala para medir distancias.</span>
+      </div>
+    </section>
+    <section>
+      <h2>Registro de mensajes <small id="cuentaMensajes">0</small></h2>
+      <div id="registro"></div>
+      <div class="vacio" id="vacioRegistro">Esperando mensajes AIS…</div>
+    </section>
+  </div>
+</main>
+<script src="/vendor/leaflet.js"></script>
+<script src="/vendor/base_offline.js"></script>
+<script src="/gui/comun.js"></script>
+<script>
+const barcos = new Map();
+const GANANCIAS = [0, 0.9, 1.4, 2.7, 3.7, 7.7, 8.7, 12.5, 14.4, 15.7, 16.6, 19.7, 20.7, 22.9, 25.4, 28.0,
+  29.7, 32.8, 33.8, 36.4, 37.2, 38.6, 40.2, 42.1, 43.4, 43.9, 44.5, 48.0, 49.6];
+const TIPOS = {
+  "1": "Posición (clase A)", "2": "Posición (clase A)", "3": "Posición (clase A)", "4": "Estación base",
+  "5": "Datos estáticos y viaje", "18": "Posición (clase B)", "19": "Posición extendida (clase B)",
+  "24": "Datos estáticos (clase B)", "11": "Hora UTC (respuesta)", "21": "Ayuda a la navegación"
+};
+const MAX_REGISTRO = 100;
+let nMensajes = 0;
+let ultimoEstado = null;
+let recibidoEn = 0;
+let canalWs = null;
+
+const $ = id => document.getElementById(id);
+const fmt = (v, d) => (v === null || v === undefined) ? "–" : Number(v).toFixed(d);
+
+function hace(ts) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+  if (s < 60) return s + " s";
+  if (s < 3600) return Math.floor(s / 60) + " min " + (s % 60) + " s";
+  return Math.floor(s / 3600) + " h " + Math.floor((s % 3600) / 60) + " min";
+}
+
+function duracion(seg) {
+  seg = Math.round(seg);
+  const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+}
+
+function hora(ts) {
+  const d = new Date(ts * 1000);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, "0")).join(":");
+}
+
+function apagar(elemento) {
+  setTimeout(() => elemento.classList.remove("nuevo"), 2000);
+}
+
+function celda(texto, clase) {
+  const td = document.createElement("td");
+  td.textContent = texto;
+  if (clase) td.className = clase;
+  return td;
+}
+
+function dibujarBarcos(resaltar, lista) {
+  lista = (lista || barcosFiltrados()).slice().sort((a, b) => b.ultima_vez - a.ultima_vez);
+  const cuerpo = $("cuerpoBarcos");
+  cuerpo.textContent = "";
+  for (const b of lista) {
+    const tr = document.createElement("tr");
+    tr.className = "clic" + (b.mmsi === seleccionado ? " nuevo" : "");
+    tr.onclick = () => { seleccionado = b.mmsi; mapa.seleccionar(b.mmsi, true); dibujarBarcos(null); };
+    tr.ondblclick = () => historial.abrir(b.mmsi);
+    const btHist = document.createElement("button");
+    btHist.type = "button";
+    btHist.className = "mini";
+    btHist.textContent = "Historial";
+    btHist.title = "Ver todos los mensajes de este barco";
+    btHist.onclick = ev => { ev.stopPropagation(); seleccionado = b.mmsi; historial.abrir(b.mmsi); };
+    const tdHist = celda("");
+    tdHist.append(btHist);
+    if (b.mmsi === resaltar) {
+      tr.className = "clic nuevo";
+      apagar(tr);
+    }
+    const dist = AIS.distancia(b, receptor, true);
+    const rec = AIS.recepcion(b);
+    const tdRec = celda("");
+    if (rec) {
+      const e = document.createElement("span");
+      e.className = "etiqueta " + (rec === "directa" ? "dir" : "rep");
+      e.textContent = rec === "directa" ? "Directa" : "Retransmitida";
+      tdRec.append(e);
+    } else tdRec.textContent = "–";
+    tr.append(
+      tdHist, celda(b.mmsi), celda(b.nombre || "–"), celda(b.pais || "–"), celda(b.tipo_nave_desc || b.categoria || "–"),
+      celda(dist === null ? "–" : fmt(dist, dist < 10 ? 2 : 1), "num"), tdRec,
+      celda(fmt(b.sog_kn, 1), "num"), celda(b.rumbo === null || b.rumbo === undefined ? "–" : b.rumbo + "°", "num"),
+      celda(fmt(b.lat, 5), "num"), celda(fmt(b.lon, 5), "num"), celda(b.destino || "–"),
+      celda(b.n_mensajes, "num"), celda(hace(b.ultima_vez), "num")
+    );
+    tr.dataset.ultima = b.ultima_vez;
+    cuerpo.append(tr);
+  }
+  const total = barcos.size;
+  $("cuentaBarcos").textContent = filtros.activo() ? lista.length + " de " + total : total;
+  $("vacioBarcos").textContent = total ? "Ningún barco coincide con los filtros." : "Esperando mensajes AIS…";
+  $("vacioBarcos").style.display = lista.length ? "none" : "block";
+}
+
+function elementoMensaje(m, nuevo) {
+  const div = document.createElement("div");
+  div.className = "msg" + (nuevo ? " nuevo" : "");
+  const cab = document.createElement("div");
+  cab.className = "cab";
+  const canal = document.createElement("span");
+  canal.className = "canal";
+  canal.textContent = m.canal;
+  const hr = document.createElement("span");
+  hr.textContent = hora(m.ts);
+  const tipo = document.createElement("span");
+  tipo.textContent = "Tipo " + m.tipo;
+  const mmsi = document.createElement("span");
+  mmsi.textContent = "MMSI " + m.mmsi;
+  const pais = document.createElement("span");
+  pais.textContent = m.pais || "";
+  const snr = document.createElement("em");
+  snr.textContent = "SNR " + fmt(m.snr_db, 1) + " dB · desvío " + fmt(m.desvio_hz, 0) + " Hz" +
+    (m.dist_km !== null && m.dist_km !== undefined ? " · " + fmt(m.dist_km, 2) + " km" : "");
+  cab.append(canal, hr, tipo, mmsi, pais);
+  if (m.repeticion !== null && m.repeticion !== undefined) {
+    const e = document.createElement("span");
+    e.className = "etiqueta " + (m.repeticion === 0 ? "dir" : "rep");
+    e.textContent = m.repeticion === 0 ? "Directo" : "Retransmitido";
+    cab.append(e);
+  }
+  cab.append(snr);
+  div.append(cab);
+  if (m.resumen) {
+    const det = document.createElement("div");
+    det.className = "det";
+    det.textContent = m.resumen;
+    div.append(det);
+  }
+  for (const linea of m.nmea) {
+    const c = document.createElement("code");
+    c.textContent = linea;
+    div.append(c);
+  }
+  return div;
+}
+
+const registroMsgs = [];
+
+function msgPasaFiltro(m) {
+  if (!filtros.activo()) return true;
+  const b = barcos.get(m.mmsi) || { mmsi: m.mmsi, pais: m.pais, dist_km: m.dist_km, directo: m.repeticion === 0 ? 1 : 0 };
+  return filtros.pasa(b);
+}
+
+function dibujarRegistro() {
+  const reg = $("registro");
+  reg.textContent = "";
+  let n = 0;
+  for (let i = registroMsgs.length - 1; i >= 0; i--) {
+    const m = registroMsgs[i];
+    if (!msgPasaFiltro(m)) continue;
+    reg.append(elementoMensaje(m, m._nuevo && Date.now() - m._nuevo < 2000));
+    n++;
+  }
+  $("cuentaMensajes").textContent = filtros.activo() ? n + " de " + nMensajes : nMensajes;
+  $("vacioRegistro").textContent = nMensajes ? "Ningún mensaje coincide con los filtros." : "Esperando mensajes AIS…";
+  $("vacioRegistro").style.display = n ? "none" : "block";
+}
+
+function agregarMensaje(m, nuevo) {
+  if (nuevo) m._nuevo = Date.now();
+  registroMsgs.push(m);
+  while (registroMsgs.length > MAX_REGISTRO) registroMsgs.shift();
+  nMensajes += 1;
+}
+
+function dibujarBarras(contenedor, filas) {
+  contenedor.textContent = "";
+  const maximo = Math.max(1, ...filas.map(f => f.valor));
+  if (!filas.length) {
+    const v = document.createElement("div");
+    v.className = "vacio";
+    v.textContent = "Sin mensajes todavía";
+    contenedor.append(v);
+    return;
+  }
+  for (const f of filas) {
+    const fila = document.createElement("div");
+    fila.className = "fila-barra";
+    const nombre = document.createElement("div");
+    nombre.className = "nombre";
+    nombre.textContent = f.nombre;
+    const barra = document.createElement("div");
+    barra.className = "barra";
+    const relleno = document.createElement("i");
+    relleno.style.width = (100 * f.valor / maximo) + "%";
+    barra.append(relleno);
+    const valor = document.createElement("div");
+    valor.className = "valor";
+    valor.textContent = f.valor;
+    fila.append(nombre, barra, valor);
+    contenedor.append(fila);
+  }
+}
+
+function llenarGanancias(actual) {
+  const sel = $("cGanancia");
+  const valores = GANANCIAS.includes(actual) ? GANANCIAS : [...GANANCIAS, actual].sort((a, b) => a - b);
+  sel.textContent = "";
+  for (const g of valores) {
+    const o = document.createElement("option");
+    o.value = g;
+    o.textContent = g.toFixed(1);
+    sel.append(o);
+  }
+  sel.value = actual;
+}
+
+function mostrarNube(n) {
+  const el = $("mNube");
+  const total = n.pendientes ? Object.values(n.pendientes).reduce((a, b) => a + b, 0) : null;
+  let texto = "–", clase = "", detalle = "Envío a la nube sin configurar (funcionalidad/nube.json).";
+  if (n.activo) {
+    const ok = n.ultimo_ok ? "último envío " + AIS.hace(n.ultimo_ok) + " atrás" : "sin envíos aún";
+    detalle = n.url + " · estación " + n.estacion + " · " + ok + " · " + n.enviados + " registros enviados";
+    if (n.estado === "al_dia") { texto = "Al día"; clase = "ok"; }
+    else if (n.estado === "enviando" || n.estado === "iniciando") { texto = "Enviando…"; clase = "pend"; }
+    else if (n.estado === "pendiente") { texto = total + " pend."; clase = "pend"; }
+    else if (n.estado === "sin_conexion") { texto = "Sin conexión"; clase = "mal"; }
+    else if (n.estado === "rechazado") { texto = "Rechazado"; clase = "mal"; }
+    else { texto = "Error"; clase = "mal"; }
+    if (total) detalle += " · " + total + " pendientes";
+    if (n.error) detalle += " · " + n.error;
+    if (n.proximo_intento) detalle += " · reintento en " + Math.max(0, Math.round(n.proximo_intento - Date.now() / 1000)) + " s";
+  }
+  el.textContent = texto;
+  el.className = clase;
+  el.title = detalle;
+}
+
+function mostrarEstado(e) {
+  ultimoEstado = e;
+  recibidoEn = Date.now();
+  $("punto").className = "punto" + (e.corriendo ? " on" : "");
+  $("textoEstado").textContent = e.corriendo ? "Recibiendo" : (e.activo ? "Finalizado" : "Detenido");
+  $("mFuente").textContent = e.fuente === "sdr" ? "RTL-SDR" : e.detalle;
+  $("mSesion").textContent = e.sesion === null ? "–" : e.sesion;
+  $("mMensajes").textContent = e.mensajes;
+  $("mRafagas").textContent = e.rafagas;
+  $("mPerdidos").textContent = e.perdidos;
+  $("mPiso").textContent = fmt(e.piso.A, 1) + " / " + fmt(e.piso.B, 1);
+  $("mTiempo").textContent = duracion(e.segundos);
+  $("kTasa").textContent = e.tasa === null ? "–" : fmt(e.tasa, 0) + " %";
+  $("kSnrMedio").textContent = fmt(e.snr_medio, 1);
+  $("kSnrUltimo").textContent = fmt(e.snr_ultimo, 1);
+  $("kMpm").textContent = e.activo ? fmt(e.mpm, 1) : "–";
+  $("kSinCrc").textContent = e.sin_crc;
+  $("kInvalidos").textContent = e.invalidos;
+  $("kGuardados").textContent = e.guardados;
+  $("kCola").textContent = e.cola;
+  dibujarBarras($("barrasCanal"), Object.entries(e.por_canal).map(([k, v]) => ({ nombre: "Canal " + k + (k === "A" ? " (161.975 MHz)" : " (162.025 MHz)"), valor: v })));
+  const tipos = Object.entries(e.por_tipo).sort((a, b) => Number(a[0]) - Number(b[0]));
+  dibujarBarras($("barrasTipo"), e.mensajes === 0 ? [] : tipos.map(([k, v]) => ({ nombre: "Tipo " + k + " · " + (TIPOS[k] || "Otro"), valor: v })));
+  $("bIniciar").disabled = e.corriendo;
+  $("bDetener").disabled = !e.activo;
+  const esSdr = e.fuente === "sdr";
+  $("cGanancia").disabled = !esSdr;
+  $("cPpm").disabled = !esSdr;
+  $("notaFuente").textContent = esSdr ? "" : "Con un archivo, la ganancia y los ppm no se aplican";
+  const aviso = $("aviso");
+  if (e.error) {
+    aviso.textContent = "Error del lector: " + e.error;
+    aviso.style.display = "block";
+  } else {
+    aviso.style.display = "none";
+  }
+  mostrarNube(e.nube || { activo: false });
+  const ambar = $("avisoAmbar");
+  const avisos = e.avisos || [];
+  ambar.textContent = avisos.map(a => "⚠ " + a.texto).join("  ");
+  ambar.style.display = avisos.length ? "block" : "none";
+  $("notaMapa").title = e.mosaicos_directo ? "El servidor no pudo descargar mosaicos (" + e.mosaicos_directo +
+    "); el navegador los pide directamente a OpenStreetMap." : "";
+}
+
+const ALTO_CASCADA = 180;
+const LUT = (() => {
+  const paradas = [[0, 8, 12, 60], [0.25, 30, 60, 160], [0.5, 20, 170, 200], [0.75, 240, 220, 60], [1, 240, 60, 40]];
+  const tabla = [];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let j = 1;
+    while (j < paradas.length - 1 && t > paradas[j][0]) j++;
+    const a = paradas[j - 1], b = paradas[j];
+    const u = (t - a[0]) / (b[0] - a[0]);
+    tabla.push([1, 2, 3].map(k => Math.round(a[k] + (b[k] - a[k]) * u)));
+  }
+  return tabla;
+})();
+const esp = { vista: "zoom", pausa: false, ultimo: null, t: 0, ref: { zoom: null, completo: null }, ymin: null, ymax: null };
+
+function mediana(a) {
+  const b = Float64Array.from(a).sort();
+  return b[Math.floor(b.length / 2)];
+}
+
+function filaCascada(canvas, valores, ref) {
+  if (canvas.width !== valores.length || canvas.height !== ALTO_CASCADA) {
+    canvas.width = valores.length;
+    canvas.height = ALTO_CASCADA;
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(canvas, 0, 1);
+  const img = ctx.createImageData(valores.length, 1);
+  for (let i = 0; i < valores.length; i++) {
+    const v = (valores[i] - (ref - 3)) / 28;
+    const c = LUT[Math.max(0, Math.min(255, Math.round(v * 255)))];
+    img.data[4 * i] = c[0];
+    img.data[4 * i + 1] = c[1];
+    img.data[4 * i + 2] = c[2];
+    img.data[4 * i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function dibujarEspectro() {
+  const d = esp.ultimo;
+  if (!d) return;
+  const cv = $("espCanvas");
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const zoom = esp.vista === "zoom";
+  const vals = zoom ? d.zoom : d.completo;
+  const f0 = zoom ? d.zoom_f0 : d.completo_f0;
+  const paso = zoom ? d.zoom_paso : d.completo_paso;
+  const n = vals.length;
+  const L = 46, R = 10, T = 14, B = 26;
+  const pw = w - L - R, ph = h - T - B;
+  const med = mediana(vals);
+  const maxv = Math.max(...vals);
+  const objMin = med - 6, objMax = Math.max(maxv, med + 15) + 3;
+  esp.ymin = esp.ymin === null ? objMin : esp.ymin * 0.9 + objMin * 0.1;
+  esp.ymax = esp.ymax === null ? objMax : esp.ymax * 0.9 + objMax * 0.1;
+  const ymin = esp.ymin, ymax = esp.ymax;
+  const css = getComputedStyle(document.documentElement);
+  const suave = css.getPropertyValue("--suave").trim();
+  const borde = css.getPropertyValue("--borde").trim();
+  const acento = css.getPropertyValue("--acento").trim();
+  const alerta = css.getPropertyValue("--alerta").trim();
+  const X = i => L + (i + 0.5) / n * pw;
+  const Y = v => T + ph - (v - ymin) / (ymax - ymin) * ph;
+  const iDe = f => (f - f0) / paso;
+
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.lineWidth = 1;
+  ctx.textAlign = "right";
+  for (let g = Math.ceil(ymin / 10) * 10; g <= ymax; g += 10) {
+    const y = Y(g);
+    ctx.strokeStyle = borde;
+    ctx.beginPath();
+    ctx.moveTo(L, y);
+    ctx.lineTo(L + pw, y);
+    ctx.stroke();
+    ctx.fillStyle = suave;
+    ctx.fillText(g + " dB", L - 6, y + 4);
+  }
+  ctx.textAlign = "center";
+  const paso_tick = zoom ? 50000 : 250000;
+  const lim = zoom ? 100000 : 750000;
+  for (let off = -lim; off <= lim; off += paso_tick) {
+    const x = X(iDe(off));
+    ctx.strokeStyle = borde;
+    ctx.beginPath();
+    ctx.moveTo(x, T + ph);
+    ctx.lineTo(x, T + ph + 4);
+    ctx.stroke();
+    ctx.fillStyle = suave;
+    ctx.fillText(((d.fc + off) / 1e6).toFixed(3), Math.min(Math.max(x, L + 18), L + pw - 18), h - 8);
+  }
+  ctx.save();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = alerta;
+  for (const off of [-25000, 25000]) {
+    const x = X(iDe(off));
+    ctx.beginPath();
+    ctx.moveTo(x, T);
+    ctx.lineTo(x, T + ph);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.fillStyle = alerta;
+  if (zoom) {
+    ctx.fillText("AIS 1", X(iDe(-25000)), T - 3);
+    ctx.fillText("AIS 2", X(iDe(25000)), T - 3);
+  } else {
+    ctx.fillText("AIS 1 y 2", X(iDe(0)), T - 3);
+  }
+  ctx.beginPath();
+  ctx.moveTo(X(0), T + ph);
+  for (let i = 0; i < n; i++) ctx.lineTo(X(i), Math.max(T, Math.min(T + ph, Y(vals[i]))));
+  ctx.lineTo(X(n - 1), T + ph);
+  ctx.closePath();
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = acento;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = acento;
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const y = Math.max(T, Math.min(T + ph, Y(vals[i])));
+    if (i === 0) ctx.moveTo(X(i), y); else ctx.lineTo(X(i), y);
+  }
+  ctx.stroke();
+}
+
+function recibirEspectro(d) {
+  if (esp.pausa) return;
+  esp.ultimo = d;
+  esp.t = Date.now();
+  for (const [clave, lienzo] of [["zoom", "wfZoom"], ["completo", "wfFull"]]) {
+    const m = mediana(d[clave]);
+    esp.ref[clave] = esp.ref[clave] === null ? m : esp.ref[clave] * 0.9 + m * 0.1;
+    filaCascada($(lienzo), d[clave], esp.ref[clave]);
+  }
+  $("notaEsp").textContent = (d.fc / 1e6).toFixed(3) + " MHz · 1.536 MS/s";
+  dibujarEspectro();
+}
+
+function elegirVista(vista) {
+  esp.vista = vista;
+  $("vZoom").classList.toggle("activo", vista === "zoom");
+  $("vFull").classList.toggle("activo", vista === "completo");
+  $("wfZoom").classList.toggle("visible", vista === "zoom");
+  $("wfFull").classList.toggle("visible", vista === "completo");
+  esp.ymin = null;
+  esp.ymax = null;
+  dibujarEspectro();
+}
+
+$("vZoom").onclick = () => elegirVista("zoom");
+$("vFull").onclick = () => elegirVista("completo");
+$("vPausa").onclick = () => {
+  esp.pausa = !esp.pausa;
+  $("vPausa").textContent = esp.pausa ? "Reanudar" : "Pausar";
+  $("vPausa").classList.toggle("activo", esp.pausa);
+};
+window.addEventListener("resize", dibujarEspectro);
+
+const estelas = new Map();
+const MAX_ESTELA = 500;
+let receptor = null;
+let pistaRx = [];
+let seleccionado = null;
+let dibujoPendiente = false;
+
+const filtros = new AIS.Filtros($("filtros"), () => refrescar());
+const mapa = new AIS.Mapa("mapaL", {
+  alSeleccionar: mmsi => { seleccionado = mmsi; dibujarBarcos(null); },
+  alFijar: (lat, lon) => enviarPosicion(lat, lon, null, "clic en el mapa"),
+  alEstadoMosaicos: t => { $("notaMapa").textContent = t; }
+});
+const historial = new AIS.Historial(mapa, AIS.abrirUrl);
+AIS.abrirHistorial = mmsi => historial.abrir(mmsi);
+const ubicacion = new AIS.Ubicacion((lat, lon, prec, fuente) => enviarPosicion(lat, lon, prec, fuente),
+  t => { $("rxEstado").textContent = t; });
+
+function barcosFiltrados() {
+  filtros.rx = receptor;
+  filtros.enVivo = true;
+  const todos = [...barcos.values()];
+  filtros.actualizarPaises(todos);
+  return filtros.aplicar(todos);
+}
+
+function refrescar() {
+  if (dibujoPendiente) return;
+  dibujoPendiente = true;
+  requestAnimationFrame(() => {
+    dibujoPendiente = false;
+    const lista = barcosFiltrados();
+    dibujarBarcos(null, lista);
+    mapa.dibujar({ barcos: lista, estelas, segEstela: Number($("mEstela").value), rx: receptor,
+      pistaRx, enVivo: true, radioKm: filtros.radioKm() });
+    dibujarRegistro();
+  });
+}
+
+function enviarPosicion(lat, lon, precision, fuente) {
+  enviar("posicion", { lat, lon, precision, fuente });
+}
+
+function mostrarReceptor() {
+  if (!AIS.tienePos(receptor)) return;
+  if (document.activeElement !== $("rxLat") && document.activeElement !== $("rxLon")) {
+    $("rxLat").value = receptor.lat.toFixed(5);
+    $("rxLon").value = receptor.lon.toFixed(5);
+  }
+  if (!ubicacion.activa()) {
+    $("rxEstado").textContent = "Receptor en " + receptor.lat.toFixed(5) + ", " + receptor.lon.toFixed(5) +
+      " (" + (receptor.fuente || "manual") + (receptor.precision_m ? ", ±" + Math.round(receptor.precision_m) + " m" : "") + ")";
+  }
+}
+
+$("mAjustar").onclick = () => mapa.ajustar();
+$("mPestana").onclick = () => AIS.abrirPestanaMapa();
+$("mEstela").onchange = () => refrescar();
+$("rxAuto").onclick = () => {
+  if (ubicacion.activa()) ubicacion.detener();
+  else ubicacion.iniciar();
+  $("rxAuto").textContent = ubicacion.activa() ? "Detener ubicación" : "Usar mi ubicación";
+};
+$("rxClic").onclick = () => { mapa.modoFijar(); $("rxEstado").textContent = "Haz clic en el mapa donde está tu antena."; };
+$("rxGuardar").onclick = () => {
+  const lat = parseFloat($("rxLat").value), lon = parseFloat($("rxLon").value);
+  if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) { $("rxEstado").textContent = "Coordenadas no válidas."; return; }
+  enviarPosicion(lat, lon, null, "manual");
+};
+window.addEventListener("resize", () => mapa.refrescarTamano());
+setInterval(refrescar, 5000);
+
+
+function cargarControles(cfg) {
+  llenarGanancias(cfg.ganancia);
+  $("cPpm").value = cfg.ppm;
+  $("cUmbral").value = cfg.umbral;
+}
+
+function enviar(accion, extra) {
+  if (!canalWs || canalWs.readyState !== 1) {
+    $("avisoCtl").textContent = "Sin conexión con el servidor.";
+    return;
+  }
+  canalWs.send(JSON.stringify(Object.assign({ k: "cmd", accion: accion }, extra || {})));
+}
+
+$("bAplicar").onclick = () => enviar("aplicar", {
+  ganancia: $("cGanancia").value, ppm: $("cPpm").value, umbral: $("cUmbral").value
+});
+$("bIniciar").onclick = () => enviar("iniciar");
+$("bDetener").onclick = () => enviar("detener");
+
+const borrarCampos = ["bBarco", "bDesde", "bHasta"];
+
+function criteriosBorrar() {
+  const t = id => { const v = $(id).value; return v ? new Date(v).getTime() / 1000 : null; };
+  const hasta = t("bHasta");
+  return { barco: $("bBarco").value.trim(), desde: t("bDesde"), hasta: hasta === null ? null : hasta + 59 };
+}
+
+function invalidarBorrar() {
+  $("bEjecutarBorrar").disabled = true;
+}
+
+for (const id of borrarCampos) $(id).addEventListener("input", invalidarBorrar);
+
+$("bBuscarBorrar").onclick = () => {
+  const c = criteriosBorrar();
+  if (!c.barco && c.desde === null && c.hasta === null) {
+    mostrarBorrar("Indica un barco o un rango de tiempo.", true);
+    return;
+  }
+  invalidarBorrar();
+  mostrarBorrar("Consultando…", false);
+  enviar("borrar_vista", c);
+};
+
+$("bEjecutarBorrar").onclick = () => {
+  invalidarBorrar();
+  enviar("borrar", criteriosBorrar());
+};
+
+function mostrarBorrar(texto, error) {
+  $("resBorrar").textContent = texto;
+  $("resBorrar").className = error ? "error" : "";
+}
+
+function resultadoBorrar(d) {
+  if (d.modo === "error") {
+    mostrarBorrar(d.texto, true);
+    return;
+  }
+  if (d.modo === "borrado") {
+    mostrarBorrar(d.texto, false);
+    return;
+  }
+  if (d.mensajes === 0) {
+    mostrarBorrar("Ningún registro coincide con esos criterios.", false);
+    return;
+  }
+  const quien = d.nombres.length ? " Barcos: " + d.nombres.join(", ") + "." : "";
+  mostrarBorrar("Se eliminarían " + d.mensajes + " mensajes de " + d.barcos + " barco(s)." + quien +
+    " Pulsa Eliminar para confirmar; no se puede deshacer.", false);
+  $("bEjecutarBorrar").disabled = false;
+}
+
+function conectar() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  canalWs = ws;
+  ws.onopen = () => { $("textoEstado").textContent = "Conectado"; };
+  ws.onclose = () => {
+    $("punto").className = "punto";
+    $("textoEstado").textContent = "Sin conexión, reintentando…";
+    setTimeout(conectar, 2000);
+  };
+  ws.onmessage = ev => {
+    const d = JSON.parse(ev.data);
+    if (d.k === "inicio") {
+      barcos.clear();
+      registroMsgs.length = 0;
+      nMensajes = 0;
+      for (const b of d.barcos) barcos.set(b.mmsi, b);
+      estelas.clear();
+      for (const [mmsi, puntos] of Object.entries(d.estelas || {})) estelas.set(mmsi, puntos);
+      for (const m of d.mensajes) agregarMensaje(m, false);
+      receptor = d.receptor || null;
+      pistaRx = d.pista_receptor || [];
+      mostrarReceptor();
+      refrescar();
+      cargarControles(d.estado.config);
+      mostrarEstado(d.estado);
+    } else if (d.k === "receptor") {
+      receptor = d.posicion;
+      if (d.guardada) pistaRx.push({ sesion_id: ultimoEstado ? ultimoEstado.sesion : null, ts: receptor.ts, lat: receptor.lat,
+        lon: receptor.lon, precision_m: receptor.precision_m, fuente: receptor.fuente });
+      mostrarReceptor();
+      refrescar();
+    } else if (d.k === "evento") {
+      if (d.barco) {
+        barcos.set(d.barco.mmsi, d.barco);
+        if ([1, 2, 3, 18, 19].includes(d.msg.tipo) && d.barco.ultima_posicion === d.msg.ts && d.barco.lat !== null) {
+          const clave = String(d.barco.mmsi);
+          if (!estelas.has(clave)) estelas.set(clave, []);
+          const puntos = estelas.get(clave);
+          puntos.push([d.msg.ts, d.barco.lat, d.barco.lon]);
+          if (puntos.length > MAX_ESTELA) puntos.shift();
+        }
+      }
+      agregarMensaje(d.msg, true);
+      refrescar();
+    } else if (d.k === "estado") {
+      mostrarEstado(d.estado);
+    } else if (d.k === "espectro") {
+      recibirEspectro(d);
+    } else if (d.k === "borrar_res") {
+      resultadoBorrar(d);
+    } else if (d.k === "aviso") {
+      $("avisoCtl").textContent = d.texto;
+    }
+  };
+}
+
+setInterval(() => {
+  if (ultimoEstado && ultimoEstado.corriendo) {
+    $("mTiempo").textContent = duracion(ultimoEstado.segundos + (Date.now() - recibidoEn) / 1000);
+  }
+  for (const tr of $("cuerpoBarcos").children) {
+    tr.lastChild.textContent = hace(Number(tr.dataset.ultima));
+  }
+  if (esp.t && !esp.pausa && Date.now() - esp.t > 3000) $("notaEsp").textContent = "sin datos recientes";
+}, 1000);
+
+conectar();
+</script>
+</body>
+</html>

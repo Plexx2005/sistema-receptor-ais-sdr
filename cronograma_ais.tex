@@ -1,0 +1,57 @@
+% ==============================================================================
+% CRONOGRAMA DE ACTIVIDADES - PROYECTO RECEPTOR AIS (SIN COLORES / ACADÉMICO)
+% ==============================================================================
+% Paquetes requeridos en el preámbulo de tu informe principal:
+%   \usepackage{booktabs}   % Líneas de alta calidad (\toprule, \midrule, \bottomrule)
+%   \usepackage{tabularx}   % Ancho de columna adaptable automático (tipo X)
+%   \usepackage{array}      % Alineación avanzada de celdas
+% ==============================================================================
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{geometry}
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+
+\begin{document}
+
+\section*{Cronograma de Actividades del Proyecto}
+
+% ------------------------------------------------------------------------------
+% OPCIÓN A: Con columna formal de "Estado" (Recomendada para Informes Técnicos)
+% ------------------------------------------------------------------------------
+\begin{table}[htbp]
+\centering
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\textwidth}{>{\centering\arraybackslash}p{1.3cm} >{\centering\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}X >{\centering\arraybackslash}p{2.2cm}}
+\toprule
+\textbf{Semana} & \textbf{Periodo} & \textbf{Actividad principal y entregables} & \textbf{Estado} \\
+\midrule
+\textbf{9}  & 21 -- 25 sep. & Instalación de controladores para el RTL-SDR, verificación de hardware, calibración inicial (sintonía en frecuencias AIS) y configuración del entorno de decodificación. \textbf{Entrega del Informe Técnico 1 (Propuesta, 22 de sep.)}. & Completado \\
+\addlinespace[3pt]
+\textbf{10} & 28 sep. -- 2 oct. & Primeras capturas de prueba en campo, validación de la decodificación de mensajes AIS, ajuste de parámetros de recepción (ganancia RF, filtrado) y desarrollo del módulo de procesamiento de datos. & Completado \\
+\addlinespace[3pt]
+\textbf{--} & 6 -- 10 oct. & Semana de receso académico. \textbf{Entrega del Informe Técnico 2 (Avance del sistema, viernes 7 de oct.)}. & Completado \\
+\addlinespace[3pt]
+\textbf{11} & 12 -- 16 oct. & Desarrollo y optimización de la interfaz gráfica de usuario (GUI) y módulo de visualización geográfica (mapa interactivo en tiempo real con marcadores dinámicos de embarcaciones). & Completado \\
+\addlinespace[3pt]
+\textbf{12} & 19 -- 23 oct. & Segunda campaña intensiva de pruebas de campo en entorno fluvial de alto tráfico de embarcaciones (río Magdalena). Detección, diagnóstico y corrección de errores en la decodificación y sincronización de tramas AIS. & Completado \\
+\addlinespace[3pt]
+\textbf{13} & 26 -- 30 oct. & Despliegue integral de la infraestructura en la nube (AWS): aprovisionamiento de instancia EC2 (servidor FastAPI), proxy inverso Caddy con HTTPS/TLS automático, base de datos PostgreSQL 16 en RDS y sincronización asíncrona local-nube (\texttt{nube.py}). & Completado \\
+\addlinespace[3pt]
+\textbf{14} & 2 -- 6 nov. & Sesiones de revisión presencial y retroalimentación técnica con el docente evaluador. \textbf{Entrega formal del Informe Técnico 3}. & Completado \\
+\midrule
+\textbf{15} & 9 -- 13 nov. & Campañas de prueba de campo en múltiples ubicaciones estratégicas y mediciones en zona de gran elevación topográfica (línea de vista despejada) para caracterización del alcance máximo de cobertura RF y sensibilidad del receptor. & Planificado \\
+\addlinespace[3pt]
+\textbf{16} & 16 -- 20 nov. & Consolidación final de la documentación, edición del video demostrativo del sistema, \textbf{entrega del Informe Técnico 4 (Final)} y \textbf{sustentación/presentación oral del proyecto}. & Planificado \\
+\bottomrule
+\end{tabularx}
+\caption{Cronograma de ejecución y estado de cumplimiento de actividades del proyecto AIS.}
+\label{tab:cronograma_ais}
+\end{table}
+
+\end{document}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barcos AIS en vivo</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --fondo:#0f1720; --panel:#16212d; --texto:#e6edf3; --tenue:#8aa0b4; --acento:#3fb6ff; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--fondo); color:var(--texto); font:14px system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; padding:10px 16px; background:var(--panel); }
+  header h1 { font-size:16px; margin:0 auto 0 0; }
+  .dato span { color:var(--tenue); margin-right:4px; }
+  select { background:var(--fondo); color:var(--texto); border:1px solid #2b3b4c; border-radius:6px; padding:3px 6px; }
+  main { display:flex; height:calc(100% - 48px); }
+  #mapa { flex:1; }
+  #lista { width:300px; overflow:auto; background:var(--panel); border-left:1px solid #22313f; }
+  #lista div { padding:7px 12px; border-bottom:1px solid #1f2c39; cursor:pointer; }
+  #lista div:hover { background:#1c2a38; }
+  #lista small { color:var(--tenue); display:block; }
+  .pt { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  .leaflet-popup-content { font-size:13px; line-height:1.45; }
+  .leaflet-popup-content button { margin-top:6px; }
+  .rx { font-size:20px; text-shadow:0 0 3px #fff; }
+  @media (max-width: 760px) { main { flex-direction:column; } #lista { width:auto; height:35%; border-left:0; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Barcos AIS en vivo</h1>
+  <div class="dato"><span>Barcos</span><b id="nBarcos">–</b></div>
+  <div class="dato"><span>Mensajes 24 h</span><b id="nMsg">–</b></div>
+  <div class="dato"><span>Último mensaje</span><b id="ultimo">–</b></div>
+  <label class="dato"><span>Ventana</span>
+    <select id="horas"><option value="1">1 h</option><option value="6">6 h</option>
+      <option value="24" selected>24 h</option><option value="72">3 días</option><option value="168">7 días</option></select>
+  </label>
+</header>
+<main><div id="mapa"></div><div id="lista"></div></main>
+<script>
+"use strict";
+// Todo texto que viene de la radio (nombres, destinos) puede traer cualquier cosa: siempre escapar.
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hora = ts => ts ? new Date(ts * 1000).toLocaleString("es-CO", {timeZone: "America/Bogota"}) : "–";
+const hace = ts => { if (!ts) return "–"; const s = Date.now() / 1000 - ts;
+  return s < 90 ? `hace ${Math.round(s)} s` : s < 5400 ? `hace ${Math.round(s / 60)} min` :
+         s < 172800 ? `hace ${Math.round(s / 3600)} h` : `hace ${Math.round(s / 86400)} d`; };
+const color = ts => { const s = Date.now() / 1000 - ts; return s < 600 ? "#3ddc84" : s < 3600 ? "#ffb020" : "#8aa0b4"; };
+
+const mapa = L.map("mapa").setView([10.99, -74.79], 9);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {maxZoom: 18, attribution: "&copy; OpenStreetMap"}).addTo(mapa);
+const capaBarcos = L.layerGroup().addTo(mapa), capaRx = L.layerGroup().addTo(mapa), capaPista = L.layerGroup().addTo(mapa);
+let primeraVez = true, rxPos = null;
+
+async function api(ruta) { const r = await fetch(ruta, {cache: "no-store"}); if (!r.ok) throw new Error(r.status); return r.json(); }
+
+function popupBarco(b) {
+  const filas = [["MMSI", b.mmsi], ["País", b.pais], ["Tipo", b.tipo_nave_desc || b.categoria], ["Indicativo", b.indicativo],
+    ["Destino", b.destino], ["Velocidad", b.sog_kn != null ? `${b.sog_kn} nudos` : null], ["Rumbo", b.cog != null ? `${b.cog}°` : null],
+    ["Distancia al receptor", b.dist_km != null ? `${b.dist_km.toFixed(1)} km` : null],
+    ["Última posición", hora(b.ultima_posicion)], ["Mensajes", b.n_mensajes]]
+    .filter(([, v]) => v != null && v !== "").map(([k, v]) => `${esc(k)}: <b>${esc(v)}</b>`).join("<br>");
+  return `<b>${esc(b.nombre || "(sin nombre)")}</b><br>${filas}<br><button data-mmsi="${esc(b.mmsi)}">Ver trayectoria</button>`;
+}
+
+async function pista(mmsi) {
+  capaPista.clearLayers();
+  const d = await api(`/api/v1/publico/barco/${encodeURIComponent(mmsi)}?horas=${document.getElementById("horas").value}`);
+  const pts = d.pista.map(p => [p.lat, p.lon]);
+  if (pts.length > 1) L.polyline(pts, {color: "#3fb6ff", weight: 3}).addTo(capaPista);
+  pts.forEach(p => L.circleMarker(p, {radius: 2, color: "#3fb6ff"}).addTo(capaPista));
+}
+mapa.on("popupopen", e => { const btn = e.popup.getElement().querySelector("button[data-mmsi]");
+  if (btn) btn.onclick = () => pista(btn.dataset.mmsi)
+    .catch(() => { btn.textContent = "No se pudo cargar la trayectoria"; }); });
+
+async function actualizar() {
+  const horas = document.getElementById("horas").value;
+  const [rx, bs, res] = await Promise.all([api("/api/v1/publico/receptor"), api(`/api/v1/publico/barcos?horas=${horas}`),
+                                           api("/api/v1/publico/resumen")]);
+  capaRx.clearLayers();
+  rx.receptores.forEach(r => {
+    rxPos = [r.lat, r.lon];
+    L.marker(rxPos, {icon: L.divIcon({className: "rx", html: "📡", iconSize: [24, 24]}), zIndexOffset: 1000})
+      .bindPopup(`<b>Receptor ${esc(r.estacion)}</b><br>Lat ${esc(r.lat.toFixed(6))}, Lon ${esc(r.lon.toFixed(6))}<br>` +
+                 `Desde: ${esc(hora(r.ts))}`).addTo(capaRx);
+  });
+  capaBarcos.clearLayers();
+  const lista = document.getElementById("lista"); lista.innerHTML = "";
+  const conPos = [];
+  bs.barcos.forEach(b => {
+    let m = null;
+    if (b.lat != null && b.lon != null && Math.abs(b.lat) <= 90 && Math.abs(b.lon) <= 180) {
+      m = L.circleMarker([b.lat, b.lon], {radius: 7, weight: 2, color: "#fff", fillColor: color(b.ultima_vez), fillOpacity: .9})
+        .bindPopup(popupBarco(b)).addTo(capaBarcos);
+      conPos.push([b.lat, b.lon]);
+    }
+    const it = document.createElement("div");
+    it.innerHTML = `<span class="pt" style="background:${color(b.ultima_vez)}"></span><b>${esc(b.nombre || b.mmsi)}</b>` +
+      `<small>${esc([b.pais, b.tipo_nave_desc || b.categoria, hace(b.ultima_vez)].filter(Boolean).join(" · "))}</small>`;
+    it.onclick = () => { if (m) { mapa.setView(m.getLatLng(), Math.max(mapa.getZoom(), 11)); m.openPopup(); } };
+    lista.appendChild(it);
+  });
+  document.getElementById("nBarcos").textContent = bs.barcos.length;
+  document.getElementById("nMsg").textContent = res.mensajes_24h;
+  document.getElementById("ultimo").textContent = hace(res.ultimo_mensaje);
+  if (primeraVez) {
+    primeraVez = false;
+    const todos = rxPos ? conPos.concat([rxPos]) : conPos;
+    if (todos.length > 1) mapa.fitBounds(todos, {padding: [30, 30], maxZoom: 12});
+    else if (rxPos) mapa.setView(rxPos, 10);
+  }
+}
+function ciclo() { actualizar().catch(e => { document.getElementById("ultimo").textContent = "sin conexión (" + e.message + ")"; }); }
+document.getElementById("horas").onchange = () => { primeraVez = true; capaPista.clearLayers(); ciclo(); };
+ciclo(); setInterval(ciclo, 15000);
+</script>
+</body>
+</html>

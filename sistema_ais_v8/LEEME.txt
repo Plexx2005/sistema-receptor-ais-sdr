@@ -1,0 +1,56 @@
+RECEPTOR AIS - VERSION 8: ENVIO A LA NUBE (OPCION B)
+====================================================
+
+1) INSTALAR
+   Cierra el Receptor AIS y haz doble clic en Instalar_v8_en_WSL.bat
+   (respaldo completo; no toca tu base de datos, tus capturas ni tu nube.json).
+   Mientras no lo configures, el sistema funciona exactamente igual que antes.
+
+2) COMO FUNCIONA
+   - Tu base de datos local (SQLite) sigue siendo la principal.
+   - Cada registro guarda automáticamente cuándo se modificó por última vez.
+   - Cuando llega un mensaje, un hilo aparte lo envía a la EC2 en menos de 1 s.
+     Nunca frena la recepción.
+   - Cada 30 s (y al abrir el receptor) se envía todo lo pendiente.
+     La primera vez sube TODO tu historial.
+   - Si se cae internet o la EC2, los datos esperan en local y se reintenta
+     a los 5, 10, 20, 40... s (máximo 5 min). No se pierde ni se duplica nada.
+   - Al cerrar el receptor se hace un último envío.
+   - Indicador "NUBE" en la parte superior de la interfaz:
+       Al día (verde) · N pend. / Enviando (naranja) · Sin conexión / Rechazado (rojo)
+     Pasa el ratón por encima para ver el detalle y el motivo de cualquier error.
+
+3) ACTIVARLO (cuando tengas la EC2 lista)
+   a) Genera una clave secreta (una sola vez). En WSL:
+        cd ~/sistema_ais/funcionalidad && python nube.py --generar-clave
+      Usa esa MISMA clave en la EC2 (variable de entorno) y en el PC.
+   b) Copia Configurar_Nube.bat a C:\Users\USER\Receptor_AIS (ya está ahí) y
+      haz doble clic: pide la URL (https://tu-nombre.duckdns.org), la clave y el
+      nombre de la estación, y prueba la conexión.
+   c) Abre el receptor como siempre. El historial se sube solo; también puedes
+      subirlo antes con:  python nube.py --enviar-todo
+
+4) PROBAR SIN AWS (opcional)
+   En una terminal de WSL:
+     cd ~/sistema_ais/pruebas
+     python servidor_nube_prueba.py --clave PRUEBA123
+   En otra:
+     cd ~/sistema_ais/funcionalidad
+     python nube.py --configurar --url http://localhost:8090 --clave PRUEBA123 --estacion prueba
+     python nube.py --probar
+   Abre el receptor: verás "Al día" y en la primera terminal cada lote recibido.
+   Para volver a la normalidad: borra funcionalidad/nube.json (o configura la URL real).
+
+5) COMANDOS UTILES (en ~/sistema_ais/funcionalidad)
+     python nube.py --estado        configuración y pendientes por tabla
+     python nube.py --probar        prueba conexión y clave
+     python nube.py --enviar-todo   envía ya todo lo pendiente
+     python nube.py --reiniciar     reenvío completo (el servidor no duplica)
+
+6) PARA LA EC2
+   NUBE_API.md (en la carpeta sistema_ais) describe exactamente qué recibe la EC2:
+   endpoints, formato del lote, códigos de respuesta y el esquema sugerido para RDS.
+   pruebas/servidor_nube_prueba.py es una implementación de referencia del contrato.
+
+Corrección incluida: escuchar.py (receptor por consola) fallaba al guardar en la
+base de datos desde la v5 por un conflicto de nombres; ya funciona.

@@ -1,0 +1,8 @@
+{
+  "url": "https://tu-nombre.duckdns.org",
+  "clave": "PEGA-AQUI-LA-CLAVE-GENERADA-CON-python-nube.py---generar-clave",
+  "estacion": "barranquilla-1",
+  "activo": true,
+  "verificar_tls": true,
+  "timeout_s": 15
+}

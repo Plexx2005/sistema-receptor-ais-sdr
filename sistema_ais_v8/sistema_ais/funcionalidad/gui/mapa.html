@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa AIS</title>
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<link rel="stylesheet" href="/gui/comun.css">
+<style>
+:root { --fondo: #f5f6f8; --panel: #ffffff; --borde: #d9dde3; --texto: #1c2430; --suave: #5b6675; --acento: #1565c0; --ok: #1b8a4b; --alerta: #c62828; --fila: #eef4fb; }
+@media (prefers-color-scheme: dark) {
+  :root { --fondo: #12171e; --panel: #1b222c; --borde: #2c3644; --texto: #e6eaf0; --suave: #9aa6b6; --acento: #5aa2f0; --ok: #46c27a; --alerta: #ef6b6b; --fila: #223045; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--fondo); color: var(--texto); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { background: var(--panel); border-bottom: 1px solid var(--borde); padding: 8px 14px; display: flex; flex-direction: column; gap: 8px; }
+.fila { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+h1 { font-size: 16px; margin: 0 8px 0 0; align-self: center; }
+.campo { display: flex; flex-direction: column; gap: 2px; }
+.campo label { font-size: 10px; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+input, select { font: inherit; color: var(--texto); background: var(--fondo); border: 1px solid var(--borde); border-radius: 6px; padding: 4px 7px; }
+button { font: inherit; font-weight: 600; border-radius: 6px; border: 1px solid var(--borde); padding: 5px 12px; cursor: pointer; background: var(--panel); color: var(--texto); }
+button.activo, button.principal { background: var(--acento); border-color: var(--acento); color: #fff; }
+.modo { display: flex; align-self: center; }
+.modo button { border-radius: 0; }
+.modo button:first-child { border-radius: 6px 0 0 6px; }
+.modo button:last-child { border-radius: 0 6px 6px 0; }
+.estado { display: flex; align-items: center; gap: 6px; align-self: center; color: var(--suave); }
+.punto { width: 9px; height: 9px; border-radius: 50%; background: var(--alerta); }
+.punto.on { background: var(--ok); }
+.oculto { display: none !important; }
+.cuerpo { flex: 1; display: flex; min-height: 0; }
+#mapa { flex: 1; min-width: 0; }
+aside { width: 330px; border-left: 1px solid var(--borde); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+aside h2 { font-size: 13px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--borde); display: flex; justify-content: space-between; }
+aside h2 small { color: var(--suave); font-weight: 400; }
+#lista { overflow-y: auto; flex: 1; }
+.item { padding: 7px 12px; border-bottom: 1px solid var(--borde); cursor: pointer; }
+.item:hover, .item.sel { background: var(--fila); }
+.item b { display: block; }
+.item-fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.item .mini { padding: 2px 8px; font-size: 12px; font-weight: 500; }
+.item span { color: var(--suave); font-size: 12px; }
+.vacio { color: var(--suave); padding: 14px 12px; }
+#nota { color: var(--suave); align-self: center; }
+.banda { padding: 6px 14px; color: #fff; display: none; }
+.banda.error { background: var(--alerta); }
+.banda.ambar { background: #b26a00; }
+@media (max-width: 800px) { aside { display: none; } }
+.filtros { margin-bottom: 0; }
+.receptor-ctl { margin: 0; }
+</style>
+</head>
+<body>
+<div class="banda error" id="bandaError"></div>
+<div class="banda ambar" id="bandaAviso"></div>
+<header>
+  <div class="fila">
+    <h1>Mapa AIS</h1>
+    <div class="modo"><button id="mVivo" class="activo">En vivo</button><button id="mHist">Histórico</button></div>
+    <div class="estado" id="estadoVivo"><span class="punto" id="punto"></span><span id="textoEstado">Conectando…</span></div>
+    <div class="fila oculto" id="ctlHist">
+      <div class="campo"><label for="hSesion">Sesión</label><select id="hSesion"><option value="">(usar fechas)</option></select></div>
+      <div class="campo"><label for="hDesde">Desde</label><input id="hDesde" type="datetime-local"></div>
+      <div class="campo"><label for="hHasta">Hasta</label><input id="hHasta" type="datetime-local"></div>
+      <button id="hCargar" class="principal">Cargar</button>
+    </div>
+    <div class="campo" id="ctlEstela"><label for="mEstela">Estela</label>
+      <select id="mEstela"><option value="600">10 min</option><option value="3600" selected>1 h</option><option value="21600">6 h</option><option value="86400">24 h</option><option value="0">Todo</option></select></div>
+    <button id="mAjustar">Ajustar</button>
+    <span id="nota"></span>
+  </div>
+  <div id="filtros"></div>
+  <div class="receptor-ctl" id="ctlRx">
+    <b>Mi ubicación:</b>
+    <button id="rxAuto">Usar mi ubicación</button>
+    <button id="rxClic">Fijar con clic en el mapa</button>
+    <input id="rxLat" type="number" step="0.00001" placeholder="Latitud">
+    <input id="rxLon" type="number" step="0.00001" placeholder="Longitud">
+    <button id="rxGuardar">Guardar</button>
+    <span class="estado-rx" id="rxEstado"></span>
+  </div>
+</header>
+<div class="cuerpo">
+  <div id="mapa"></div>
+  <aside>
+    <h2>Embarcaciones <small id="cuenta">0</small></h2>
+    <div id="lista"></div>
+  </aside>
+</div>
+<script src="/vendor/leaflet.js"></script>
+<script src="/vendor/base_offline.js"></script>
+<script src="/gui/comun.js"></script>
+<script>
+const $ = AIS.$;
+const vivo = { barcos: new Map(), estelas: new Map(), rx: null, pista: [] };
+const hist = { barcos: [], estelas: new Map(), rx: null, pista: [], cargado: false };
+let modo = "vivo";
+let ws = null;
+let pendiente = false;
+
+const filtros = new AIS.Filtros($("filtros"), () => refrescar());
+const mapa = new AIS.Mapa("mapa", {
+  alSeleccionar: () => dibujarLista(),
+  alFijar: (lat, lon) => enviarPosicion(lat, lon, null, "clic en el mapa"),
+  alEstadoMosaicos: t => { $("nota").textContent = t; }
+});
+const historial = new AIS.Historial(mapa, AIS.abrirUrl);
+AIS.abrirHistorial = mmsi => historial.abrir(mmsi);
+const ubicacion = new AIS.Ubicacion((lat, lon, p, f) => enviarPosicion(lat, lon, p, f), t => { $("rxEstado").textContent = t; });
+
+function datos() {
+  if (modo === "vivo") return { barcos: [...vivo.barcos.values()], estelas: vivo.estelas, rx: vivo.rx, pista: vivo.pista, enVivo: true };
+  return { barcos: hist.barcos, estelas: hist.estelas, rx: hist.rx, pista: hist.pista, enVivo: false };
+}
+
+function filtrados() {
+  const d = datos();
+  filtros.rx = d.rx;
+  filtros.enVivo = d.enVivo;
+  filtros.actualizarPaises(d.barcos);
+  return filtros.aplicar(d.barcos);
+}
+
+function refrescar() {
+  if (pendiente) return;
+  pendiente = true;
+  requestAnimationFrame(() => {
+    pendiente = false;
+    const d = datos();
+    const lista = filtrados();
+    const seg = Number($("mEstela").value);
+    mapa.dibujar({ barcos: lista, estelas: d.estelas, segEstela: d.enVivo && seg ? seg : 0, rx: d.rx,
+      pistaRx: d.pista, enVivo: d.enVivo, radioKm: filtros.radioKm() });
+    dibujarLista(lista);
+  });
+}
+
+function dibujarLista(lista) {
+  lista = (lista || filtrados()).slice();
+  const d = datos();
+  lista.sort((a, b) => {
+    const da = AIS.distancia(a, d.rx, d.enVivo), db = AIS.distancia(b, d.rx, d.enVivo);
+    if (da === null && db === null) return b.ultima_vez - a.ultima_vez;
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return da - db;
+  });
+  const cont = $("lista");
+  cont.textContent = "";
+  for (const b of lista) {
+    const it = document.createElement("div");
+    it.className = "item" + (mapa.seleccion === b.mmsi ? " sel" : "");
+    const t = document.createElement("b");
+    t.textContent = (b.nombre || "Sin nombre") + " · " + b.mmsi;
+    const dist = AIS.distancia(b, d.rx, d.enVivo);
+    const rec = AIS.recepcion(b);
+    const q = AIS.esQuieto(b);
+    const det = document.createElement("span");
+    det.textContent = [b.pais, b.tipo_nave_desc || b.categoria, dist === null ? null : AIS.fmt(dist, dist < 10 ? 2 : 1) + " km",
+      q === null ? null : (q ? "quieto" : AIS.fmt(b.sog_kn, 1) + " kn"), rec].filter(Boolean).join(" · ");
+    const bt = document.createElement("button");
+    bt.type = "button";
+    bt.className = "mini";
+    bt.textContent = "Historial";
+    bt.onclick = ev => { ev.stopPropagation(); historial.abrir(b.mmsi); };
+    const fila = document.createElement("div");
+    fila.className = "item-fila";
+    fila.append(t, bt);
+    it.append(fila, det);
+    it.onclick = () => { mapa.seleccionar(b.mmsi, true); dibujarLista(); };
+    it.ondblclick = () => historial.abrir(b.mmsi);
+    cont.append(it);
+  }
+  const total = datos().barcos.length;
+  $("cuenta").textContent = filtros.activo() ? lista.length + " de " + total : total;
+  if (!lista.length) {
+    const v = document.createElement("div");
+    v.className = "vacio";
+    v.textContent = total ? "Ningún barco coincide con los filtros." : (modo === "vivo" ? "Esperando mensajes AIS…" : "Elige una sesión o un rango y pulsa Cargar.");
+    cont.append(v);
+  }
+}
+
+function mostrarReceptor() {
+  const rx = vivo.rx;
+  if (!AIS.tienePos(rx)) { $("rxEstado").textContent = "Sin ubicación del receptor. Fíjala para medir distancias."; return; }
+  if (document.activeElement !== $("rxLat") && document.activeElement !== $("rxLon")) {
+    $("rxLat").value = rx.lat.toFixed(5);
+    $("rxLon").value = rx.lon.toFixed(5);
+  }
+  if (!ubicacion.activa()) $("rxEstado").textContent = "Receptor en " + rx.lat.toFixed(5) + ", " + rx.lon.toFixed(5) +
+    " (" + (rx.fuente || "manual") + (rx.precision_m ? ", ±" + Math.round(rx.precision_m) + " m" : "") + ")";
+}
+
+function enviarPosicion(lat, lon, precision, fuente) {
+  if (!ws || ws.readyState !== 1) { $("rxEstado").textContent = "Sin conexión con el receptor."; return; }
+  ws.send(JSON.stringify({ k: "cmd", accion: "posicion", lat, lon, precision, fuente }));
+}
+
+function conectar() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws?espectro=0");
+  ws.onopen = () => { $("textoEstado").textContent = "Conectado"; };
+  ws.onclose = () => {
+    $("punto").className = "punto";
+    $("textoEstado").textContent = "Sin conexión, reintentando…";
+    setTimeout(conectar, 2000);
+  };
+  ws.onmessage = ev => {
+    const d = JSON.parse(ev.data);
+    if (d.k === "inicio") {
+      vivo.barcos.clear();
+      for (const b of d.barcos) vivo.barcos.set(b.mmsi, b);
+      vivo.estelas.clear();
+      for (const [m, p] of Object.entries(d.estelas || {})) vivo.estelas.set(m, p);
+      vivo.rx = d.receptor || null;
+      vivo.pista = d.pista_receptor || [];
+      mostrarEstado(d.estado);
+      mostrarReceptor();
+      if (modo === "vivo") refrescar();
+    } else if (d.k === "evento") {
+      if (d.barco) {
+        vivo.barcos.set(d.barco.mmsi, d.barco);
+        if ([1, 2, 3, 18, 19].includes(d.msg.tipo) && d.barco.ultima_posicion === d.msg.ts && d.barco.lat !== null) {
+          const k = String(d.barco.mmsi);
+          if (!vivo.estelas.has(k)) vivo.estelas.set(k, []);
+          const pts = vivo.estelas.get(k);
+          pts.push([d.msg.ts, d.barco.lat, d.barco.lon]);
+          if (pts.length > 2000) pts.shift();
+        }
+      }
+      if (modo === "vivo") refrescar();
+    } else if (d.k === "receptor") {
+      vivo.rx = d.posicion;
+      if (d.guardada) vivo.pista.push({ ts: vivo.rx.ts, lat: vivo.rx.lat, lon: vivo.rx.lon, precision_m: vivo.rx.precision_m, fuente: vivo.rx.fuente });
+      mostrarReceptor();
+      if (modo === "vivo") refrescar();
+    } else if (d.k === "estado") {
+      mostrarEstado(d.estado);
+    } else if (d.k === "aviso" && d.texto) {
+      $("nota").textContent = d.texto;
+    }
+  };
+}
+
+function mostrarEstado(e) {
+  const err = $("bandaError"), av = $("bandaAviso"), avisos = e.avisos || [];
+  err.textContent = e.error ? "Error del lector: " + e.error : "";
+  err.style.display = e.error ? "block" : "none";
+  av.textContent = avisos.map(a => "⚠ " + a.texto).join("  ");
+  av.style.display = avisos.length ? "block" : "none";
+  $("punto").className = "punto" + (e.corriendo ? " on" : "");
+  $("textoEstado").textContent = (e.corriendo ? "Recibiendo" : (e.activo ? "Finalizado" : "Detenido")) + (e.sesion !== null ? " · sesión " + e.sesion : "");
+}
+
+function cambiarModo(m) {
+  modo = m;
+  $("mVivo").classList.toggle("activo", m === "vivo");
+  $("mHist").classList.toggle("activo", m === "hist");
+  $("ctlHist").classList.toggle("oculto", m !== "hist");
+  $("estadoVivo").classList.toggle("oculto", m !== "vivo");
+  $("ctlRx").classList.toggle("oculto", m !== "vivo");
+  $("ctlEstela").classList.toggle("oculto", m !== "vivo");
+  mapa.ajustado = false;
+  if (m === "hist" && !hist.cargado) cargarSesiones();
+  refrescar();
+}
+
+const aLocal = ts => { const d = new Date(ts * 1000); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+const deLocal = v => v ? new Date(v).getTime() / 1000 : null;
+
+async function cargarSesiones() {
+  try {
+    const r = await fetch("/api/sesiones");
+    const ses = (await r.json()).sort((a, b) => b.id - a.id);
+    const sel = $("hSesion");
+    sel.length = 1;
+    for (const s of ses) {
+      const o = document.createElement("option");
+      o.value = s.id;
+      o.textContent = "Sesión " + s.id + " · " + AIS.fechaHora(s.inicio) + " · " + s.n_mensajes + " msgs" + (s.rx_lat !== null && s.rx_lat !== undefined ? "" : " · sin ubicación");
+      o.dataset.inicio = s.inicio;
+      o.dataset.fin = s.fin || "";
+      sel.append(o);
+    }
+    hist.cargado = true;
+    const pedida = new URLSearchParams(location.search).get("sesion");
+    if (pedida) { sel.value = pedida; cargarHistorico(); }
+  } catch (e) {
+    $("nota").textContent = "No se pudieron leer las sesiones: " + e;
+  }
+}
+
+$("hSesion").onchange = () => {
+  const o = $("hSesion").selectedOptions[0];
+  if (o && o.value) {
+    $("hDesde").value = aLocal(Number(o.dataset.inicio));
+    $("hHasta").value = o.dataset.fin ? aLocal(Number(o.dataset.fin) + 60) : "";
+  }
+};
+for (const id of ["hDesde", "hHasta"]) $(id).addEventListener("input", () => { $("hSesion").value = ""; });
+
+async function cargarHistorico() {
+  const p = new URLSearchParams();
+  if ($("hSesion").value) p.set("sesion", $("hSesion").value);
+  else {
+    const desde = deLocal($("hDesde").value), hasta = deLocal($("hHasta").value);
+    if (desde === null && hasta === null) { $("nota").textContent = "Elige una sesión o un rango de fechas."; return; }
+    if (desde !== null) p.set("desde", desde);
+    if (hasta !== null) p.set("hasta", hasta + 59);
+  }
+  $("nota").textContent = "Cargando…";
+  try {
+    const r = await fetch("/api/historico?" + p.toString());
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    hist.barcos = d.barcos;
+    hist.estelas = new Map(Object.entries(d.estelas));
+    hist.pista = d.receptor;
+    hist.rx = d.receptor.length ? Object.assign({}, d.receptor[d.receptor.length - 1]) : null;
+    $("nota").textContent = d.mensajes + " mensajes · " + d.barcos.length + " barcos · " + d.receptor.length + " posiciones del receptor";
+    mapa.ajustado = false;
+    mapa.seleccion = null;
+    refrescar();
+  } catch (e) {
+    $("nota").textContent = "Error al cargar: " + e;
+  }
+}
+
+$("hCargar").onclick = cargarHistorico;
+$("mVivo").onclick = () => cambiarModo("vivo");
+$("mHist").onclick = () => cambiarModo("hist");
+$("mAjustar").onclick = () => mapa.ajustar();
+$("mEstela").onchange = () => refrescar();
+$("rxAuto").onclick = () => {
+  if (ubicacion.activa()) ubicacion.detener(); else ubicacion.iniciar();
+  $("rxAuto").textContent = ubicacion.activa() ? "Detener ubicación" : "Usar mi ubicación";
+};
+$("rxClic").onclick = () => { mapa.modoFijar(); $("rxEstado").textContent = "Haz clic en el mapa donde está tu antena."; };
+$("rxGuardar").onclick = () => {
+  const lat = parseFloat($("rxLat").value), lon = parseFloat($("rxLon").value);
+  if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) { $("rxEstado").textContent = "Coordenadas no válidas."; return; }
+  enviarPosicion(lat, lon, null, "manual");
+};
+window.addEventListener("resize", () => mapa.refrescarTamano());
+setInterval(() => { if (modo === "vivo") refrescar(); }, 5000);
+
+conectar();
+if (new URLSearchParams(location.search).get("sesion")) cambiarModo("hist");
+</script>
+</body>
+</html>
